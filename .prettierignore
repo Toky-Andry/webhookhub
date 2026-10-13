@@ -2,3 +2,4 @@ node_modules
 dist
 pnpm-lock.yaml
 docs/design
+apps/api/drizzle
