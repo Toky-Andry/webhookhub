@@ -2,6 +2,7 @@ import pg from 'pg';
 import { authPlugin } from './auth/plugin.js';
 import { buildApp } from './app.js';
 import { createDb } from './db/client.js';
+import { parseEncryptionKey } from './security/crypto.js';
 import { loadConfig } from './config.js';
 
 const config = loadConfig();
@@ -23,6 +24,8 @@ await app.register(authPlugin, {
   db: createDb(pool),
   sessionTtlHours: config.SESSION_TTL_HOURS,
   secureCookies: config.NODE_ENV === 'production',
+  encryptionKey: parseEncryptionKey(config.ENCRYPTION_KEY),
+  allowPrivateDestinations: config.ALLOW_PRIVATE_DESTINATIONS,
 });
 
 async function shutdown(signal: string) {

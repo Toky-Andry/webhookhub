@@ -1,10 +1,13 @@
 import { PGlite } from '@electric-sql/pglite';
 import { drizzle } from 'drizzle-orm/pglite';
 import { migrate } from 'drizzle-orm/pglite/migrator';
+import { randomBytes } from 'node:crypto';
 import { Writable } from 'node:stream';
 import { buildApp } from '../app.js';
 import { authPlugin, SESSION_COOKIE, type AuthPluginOptions } from '../auth/plugin.js';
 import * as schema from '../db/schema.js';
+
+export const TEST_ENCRYPTION_KEY = randomBytes(32);
 
 export async function createTestDb() {
   const client = new PGlite(); // in-memory PostgreSQL
@@ -37,6 +40,9 @@ export async function createTestApp(
     db,
     sessionTtlHours: 24,
     secureCookies: false,
+    encryptionKey: TEST_ENCRYPTION_KEY,
+    // Names resolve to a public address, except those starting with "internal-".
+    resolver: async (host) => (host.startsWith('internal-') ? ['10.0.0.8'] : ['93.184.216.34']),
     // Generous limits so that ordinary tests never trip the rate limiter.
     limits: {
       login: { max: 1000, timeWindow: '1 minute' },

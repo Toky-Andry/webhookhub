@@ -4,6 +4,9 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db/client.js';
+import { registerEndpointRoutes } from '../endpoints/routes.js';
+import { error, invalid } from '../http/responses.js';
+import type { Resolver } from '../security/url-guard.js';
 import { apiKeys, memberships, organizations, sessions, users } from '../db/schema.js';
 import { hashPassword, verifyAgainstDummy, verifyPassword } from '../security/password.js';
 import { generateApiKey, randomToken, sha256Hex } from '../security/tokens.js';
@@ -20,6 +23,12 @@ export interface AuthPluginOptions {
   sessionTtlHours: number;
   /** Set to true in production (HTTPS only). */
   secureCookies: boolean;
+  /** 32-byte key used to encrypt endpoint signing secrets at rest. */
+  encryptionKey: Buffer;
+  /** Development only: allow http and private destinations (a receiver on your own machine). */
+  allowPrivateDestinations?: boolean;
+  /** DNS resolver, replaceable in tests. */
+  resolver?: Resolver;
   limits?: {
     login: { max: number; timeWindow: string };
     register: { max: number; timeWindow: string };
@@ -46,18 +55,6 @@ const loginBody = z.object({
 });
 const createKeyBody = z.object({ name: z.string().trim().min(1).max(80) });
 const idParams = z.object({ id: z.uuid() });
-
-function error(code: string, message: string) {
-  return { error: { code, message } };
-}
-
-function invalid(reply: FastifyReply, issues: z.core.$ZodIssue[]) {
-  // Only field names are returned, never the submitted values (they may contain a password).
-  const fields = [...new Set(issues.map((i) => i.path.join('.') || '(body)'))];
-  return reply
-    .code(400)
-    .send({ error: { code: 'invalid_request', message: 'Invalid request', fields } });
-}
 
 function isUniqueViolation(err: unknown): boolean {
   let current: unknown = err;
@@ -279,5 +276,15 @@ export async function authPlugin(app: FastifyInstance, options: AuthPluginOption
     const ctx = await apiKeyContextFromHeader(db, request.headers.authorization);
     if (!ctx) return reply.code(401).send(error('unauthorized', 'Invalid or revoked API key'));
     return { organizationId: ctx.organizationId, keyId: ctx.keyId };
+  });
+
+  /* ---------------- destinations (endpoints) and subscriptions ---------------- */
+
+  registerEndpointRoutes(app, {
+    db,
+    requireSession,
+    encryptionKey: options.encryptionKey,
+    allowPrivateDestinations: options.allowPrivateDestinations ?? false,
+    resolver: options.resolver,
   });
 }

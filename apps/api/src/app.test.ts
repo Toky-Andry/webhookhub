@@ -23,16 +23,34 @@ describe('GET /health', () => {
 });
 
 describe('loadConfig', () => {
+  const base = {
+    DATABASE_URL: 'postgres://u:p@127.0.0.1:5432/db',
+    REDIS_URL: 'redis://127.0.0.1:6379',
+    ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+  };
+
   it('rejects a missing DATABASE_URL', () => {
-    expect(() => loadConfig({ REDIS_URL: 'redis://127.0.0.1:6379' })).toThrow(/DATABASE_URL/);
+    expect(() => loadConfig({ ...base, DATABASE_URL: undefined })).toThrow(/DATABASE_URL/);
   });
 
   it('applies defaults', () => {
-    const config = loadConfig({
-      DATABASE_URL: 'postgres://u:p@127.0.0.1:5432/db',
-      REDIS_URL: 'redis://127.0.0.1:6379',
-    });
+    const config = loadConfig(base);
     expect(config.API_PORT).toBe(3001);
     expect(config.API_HOST).toBe('127.0.0.1');
+    expect(config.ALLOW_PRIVATE_DESTINATIONS).toBe(false);
+  });
+
+  it('rejects a missing or malformed ENCRYPTION_KEY', () => {
+    expect(() => loadConfig({ ...base, ENCRYPTION_KEY: undefined })).toThrow(/ENCRYPTION_KEY/);
+    expect(() => loadConfig({ ...base, ENCRYPTION_KEY: 'too-short' })).toThrow(/ENCRYPTION_KEY/);
+  });
+
+  it('refuses private destinations in production', () => {
+    expect(() =>
+      loadConfig({ ...base, NODE_ENV: 'production', ALLOW_PRIVATE_DESTINATIONS: 'true' }),
+    ).toThrow(/production/);
+    expect(
+      loadConfig({ ...base, ALLOW_PRIVATE_DESTINATIONS: 'true' }).ALLOW_PRIVATE_DESTINATIONS,
+    ).toBe(true);
   });
 });
