@@ -62,6 +62,21 @@ export const memberships = pgTable(
   (t) => [primaryKey({ columns: [t.userId, t.organizationId] })],
 );
 
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** SHA-256 hash of the session token. The token itself only lives in the cookie. */
+    tokenHash: text('token_hash').notNull().unique(),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [index('sessions_user_idx').on(t.userId)],
+);
+
 export const apiKeys = pgTable(
   'api_keys',
   {

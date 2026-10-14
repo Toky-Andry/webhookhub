@@ -1,5 +1,7 @@
 import pg from 'pg';
+import { authPlugin } from './auth/plugin.js';
 import { buildApp } from './app.js';
+import { createDb } from './db/client.js';
 import { loadConfig } from './config.js';
 
 const config = loadConfig();
@@ -15,6 +17,12 @@ const app = buildApp({
     // Never log credentials.
     redact: ['req.headers.authorization', 'req.headers.cookie'],
   },
+});
+
+await app.register(authPlugin, {
+  db: createDb(pool),
+  sessionTtlHours: config.SESSION_TTL_HOURS,
+  secureCookies: config.NODE_ENV === 'production',
 });
 
 async function shutdown(signal: string) {
