@@ -149,6 +149,8 @@ export const events = pgTable(
     payload: jsonb('payload').notNull(),
     /** Optional. When present, the same key cannot be published twice by the same organization. */
     idempotencyKey: text('idempotency_key'),
+    /** SHA-256 of the request (type and payload), to detect a key reused with different content. */
+    requestHash: text('request_hash'),
     createdAt: createdAt(),
   },
   (t) => [

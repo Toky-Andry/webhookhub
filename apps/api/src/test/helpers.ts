@@ -47,6 +47,7 @@ export async function createTestApp(
     limits: {
       login: { max: 1000, timeWindow: '1 minute' },
       register: { max: 1000, timeWindow: '1 minute' },
+      events: { max: 100000, timeWindow: '1 minute' },
     },
     ...overrides,
   });

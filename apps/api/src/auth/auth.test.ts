@@ -312,6 +312,7 @@ describe('abuse protection', () => {
       limits: {
         login: { max: 3, timeWindow: '1 minute' },
         register: { max: 1000, timeWindow: '1 minute' },
+        events: { max: 1000, timeWindow: '1 minute' },
       },
     });
     const statuses: number[] = [];

@@ -4,6 +4,8 @@ import { and, asc, eq, isNull } from 'drizzle-orm';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import type { Db } from '../db/client.js';
+import { isUniqueViolation } from '../db/errors.js';
+import { registerEventRoutes } from '../events/routes.js';
 import { registerEndpointRoutes } from '../endpoints/routes.js';
 import { error, invalid } from '../http/responses.js';
 import type { Resolver } from '../security/url-guard.js';
@@ -32,6 +34,8 @@ export interface AuthPluginOptions {
   limits?: {
     login: { max: number; timeWindow: string };
     register: { max: number; timeWindow: string };
+    /** Publishing events, per client IP address. */
+    events: { max: number; timeWindow: string };
   };
 }
 
@@ -56,20 +60,12 @@ const loginBody = z.object({
 const createKeyBody = z.object({ name: z.string().trim().min(1).max(80) });
 const idParams = z.object({ id: z.uuid() });
 
-function isUniqueViolation(err: unknown): boolean {
-  let current: unknown = err;
-  while (current && typeof current === 'object') {
-    if ((current as { code?: string }).code === '23505') return true;
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
-}
-
 export async function authPlugin(app: FastifyInstance, options: AuthPluginOptions) {
   const { db, sessionTtlHours, secureCookies } = options;
   const limits = options.limits ?? {
     login: { max: 10, timeWindow: '1 minute' },
     register: { max: 5, timeWindow: '1 hour' },
+    events: { max: 1000, timeWindow: '1 minute' },
   };
 
   await app.register(cookie);
@@ -279,6 +275,8 @@ export async function authPlugin(app: FastifyInstance, options: AuthPluginOption
   });
 
   /* ---------------- destinations (endpoints) and subscriptions ---------------- */
+
+  registerEventRoutes(app, { db, requireSession, rateLimit: limits.events });
 
   registerEndpointRoutes(app, {
     db,
