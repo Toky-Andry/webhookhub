@@ -81,7 +81,10 @@ export function registerEventRoutes(app: FastifyInstance, deps: EventRoutesDeps)
       }
       const requestHash = key ? sha256Hex(stableStringify({ type, payload })) : null;
 
-      const replay = async () => {
+      // Sends the answer for an already known key and returns true; returns false if the key is new.
+      // It returns a boolean on purpose: a Fastify reply is "thenable", so awaiting a function that
+      // returns the reply would hide it (the caller would receive undefined and keep going).
+      const replay = async (): Promise<boolean> => {
         const [existing] = await db
           .select()
           .from(events)
@@ -89,9 +92,9 @@ export function registerEventRoutes(app: FastifyInstance, deps: EventRoutesDeps)
             and(eq(events.organizationId, ctx.organizationId), eq(events.idempotencyKey, key!)),
           )
           .limit(1);
-        if (!existing) return null;
+        if (!existing) return false;
         if (existing.requestHash !== requestHash) {
-          return reply
+          void reply
             .code(422)
             .send(
               error(
@@ -99,23 +102,22 @@ export function registerEventRoutes(app: FastifyInstance, deps: EventRoutesDeps)
                 'This idempotency key was already used with a different event',
               ),
             );
+          return true;
         }
         const rows = await db
           .select({ id: deliveries.id })
           .from(deliveries)
           .where(eq(deliveries.eventId, existing.id));
-        return reply.code(200).header('Idempotent-Replayed', 'true').send({
+        void reply.code(200).header('Idempotent-Replayed', 'true').send({
           id: existing.id,
           type: existing.type,
           createdAt: existing.createdAt,
           deliveries: rows.length,
         });
+        return true;
       };
 
-      if (key) {
-        const replayed = await replay();
-        if (replayed) return replayed;
-      }
+      if (key && (await replay())) return reply;
 
       try {
         // The event and all its deliveries are written together, or not at all.
@@ -170,10 +172,7 @@ export function registerEventRoutes(app: FastifyInstance, deps: EventRoutesDeps)
         });
       } catch (err) {
         // Two requests with the same key at the same time: the database let only one win.
-        if (key && isUniqueViolation(err)) {
-          const replayed = await replay();
-          if (replayed) return replayed;
-        }
+        if (key && isUniqueViolation(err) && (await replay())) return reply;
         throw err;
       }
     },

@@ -332,6 +332,31 @@ describe('idempotency', () => {
   });
 });
 
+describe('idempotent replays are clean', () => {
+  // Regression test: a replay used to send its answer and then keep running, which tried to insert
+  // the event anyway (a failed query) and to answer a second time. The client saw the right
+  // status code, so only the server logs revealed it.
+  it('produces no warning or error in the logs for a replay or a conflict', async () => {
+    const logs = captureLogs();
+    const logged = await createTestApp(db, {}, { stream: logs.stream, level: 'warn' });
+    const account = await setup(logged, 'Clean Replay');
+    const body = { ...order, idempotencyKey: 'clean-replay' };
+
+    expect((await publish(account, body, {}, logged)).statusCode).toBe(202);
+    expect((await publish(account, body, {}, logged)).statusCode).toBe(200);
+    const conflict = await publish(
+      account,
+      { type: 'order.paid', payload: { orderId: 1 }, idempotencyKey: 'clean-replay' },
+      {},
+      logged,
+    );
+    expect(conflict.statusCode).toBe(422);
+
+    expect(logs.text()).toBe(''); // nothing at "warn" level or above
+    await logged.close();
+  });
+});
+
 describe('reading events (dashboard)', () => {
   it('requires a session', async () => {
     expect((await app.inject({ method: 'GET', url: '/v1/events' })).statusCode).toBe(401);
